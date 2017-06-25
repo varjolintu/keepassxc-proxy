@@ -75,7 +75,7 @@ void ChromeListener::readBody(boost::asio::posix::stream_descriptor& sd, const s
         if (!ec && br > 0) {
             QByteArray arr(buf, br);
             if (!arr.isEmpty()) {
-
+#ifdef QT_DEBUG
                 QJsonParseError err;
                 QJsonDocument doc(QJsonDocument::fromJson(arr, &err));
                 if (doc.isObject()) {
@@ -88,7 +88,6 @@ void ChromeListener::readBody(boost::asio::posix::stream_descriptor& sd, const s
                     textEdit->append("Json Error: " + err.errorString());
                 }
 
-#ifdef QT_DEBUG
                 textEdit->append("Received NM (" + QString::number(br) + "): " + QString(arr));
 #endif
                 sendPacket(QString(arr));
@@ -120,13 +119,8 @@ void ChromeListener::launch()
 
 void ChromeListener::sendPacket(const QString packetData)
 {
-    QByteArray buf;
-    QDataStream out(&buf, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_5_2);
-    out << packetData;
-
     boost::asio::ip::udp::endpoint endpoint = *m_resolver.resolve({boost::asio::ip::udp::v4(), "127.0.0.1", std::to_string(m_remotePort)});
-    m_socket.async_send_to(boost::asio::buffer(buf.toStdString(), buf.length()), endpoint,
+    m_socket.async_send_to(boost::asio::buffer(packetData.toStdString(), packetData.length()), endpoint,
                 boost::bind(&ChromeListener::handle_send, this,
                 boost::asio::placeholders::error,
                 boost::asio::placeholders::bytes_transferred));
@@ -154,13 +148,9 @@ void ChromeListener::sendReply(const QString reply)
  {
     if (!error && bytes_transferred > 0) {
         QByteArray arr(m_buffer, bytes_transferred);
-        QString action;
-        QDataStream in(&arr, QIODevice::ReadOnly);
-        in.setVersion(QDataStream::Qt_5_2);
-        in >> action;
+        QString action(arr);
 
         // TODO: Read the remote port from change-public-keys request
-
         if (!action.isEmpty()) {
 #ifdef QT_DEBUG
             textEdit->append("Received datagram: " + action);
