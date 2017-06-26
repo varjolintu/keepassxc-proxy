@@ -89,6 +89,8 @@ class NativeMessagingWindow(Tkinter.Frame):
             self.log("Failed to send message.")
         except socket.timeout:
           self.log("Receive timeout")
+          msg = json.dumps({"action": messageJSON['action'], "error": "Not connected with KeePassXC.", "errorCode": 5})
+          send_message(msg)
 
     self.after(10, self.processMessages)
 
