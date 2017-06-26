@@ -14,7 +14,7 @@ import Queue
 import Tkinter
 
 udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-udpSocket.settimeout(5)
+udpSocket.settimeout(1)
 serverPort = 19700
 
 # On Windows, the default I/O mode is O_TEXT. Set this to O_BINARY
@@ -76,7 +76,7 @@ class NativeMessagingWindow(Tkinter.Frame):
       if messageJSON['action']:
         if messageJSON['action'] == "change-public-keys" and messageJSON['proxyPort']:
           self.log("Proxy port changed")
-          serverPort = messageJSON['proxyPort']
+          #serverPort = messageJSON['proxyPort']
 
         udpSocket.sendto(message, ('localhost', serverPort))
         try:
