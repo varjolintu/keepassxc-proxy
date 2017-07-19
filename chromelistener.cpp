@@ -60,7 +60,7 @@ void ChromeListener::readHeader(boost::asio::posix::stream_descriptor& sd)
         if (!ec && br >= 1) {
             uint len = 0;
             for (int i = 0; i < 4; i++) {
-                uint rc = buf[i];
+                uint rc = buf.at(i);
                 len = len | (rc << i*8);
             }
             readBody(sd, len);
