@@ -36,14 +36,14 @@ ChromeListener::ChromeListener(QWidget *parent) : QDialog(parent), m_sd(m_io_ser
 
 ChromeListener::~ChromeListener()
 {
-    if (m_sd.is_open())
-    {
+    if (m_sd.is_open()) {
         m_sd.cancel();
         m_sd.close();
     }
 
-    if (!m_io_service.stopped())
+    if (!m_io_service.stopped()) {
         m_io_service.stop();
+    }
 
     m_fut.waitForFinished();
 }
@@ -55,8 +55,8 @@ void ChromeListener::run()
 
 void ChromeListener::readHeader(boost::asio::posix::stream_descriptor& sd)
 {
-    char buf[4] = {};
-    async_read(sd, boost::asio::buffer(buf,sizeof(buf)), boost::asio::transfer_at_least(1), [&](boost::system::error_code ec, size_t br) {
+    std::array<char, 4> buf;
+    async_read(sd, boost::asio::buffer(buf), boost::asio::transfer_at_least(1), [&](boost::system::error_code ec, size_t br) {
         if (!ec && br >= 1) {
             uint len = 0;
             for (int i = 0; i < 4; i++) {
@@ -70,10 +70,10 @@ void ChromeListener::readHeader(boost::asio::posix::stream_descriptor& sd)
 
 void ChromeListener::readBody(boost::asio::posix::stream_descriptor& sd, const size_t len)
 {
-    char buf[4096] = {};
-    async_read(sd, boost::asio::buffer(buf, len), boost::asio::transfer_at_least(1), [&](boost::system::error_code ec, size_t br) {       
+    std::array<char, max_length> buf;
+    async_read(sd, boost::asio::buffer(buf), boost::asio::transfer_at_least(1), [&](boost::system::error_code ec, size_t br) {
         if (!ec && br > 0) {
-            QByteArray arr(buf, br);
+            QByteArray arr(buf.data(), br);
             if (!arr.isEmpty()) {
 #ifdef QT_DEBUG
                 QJsonParseError err;
@@ -83,8 +83,7 @@ void ChromeListener::readBody(boost::asio::posix::stream_descriptor& sd, const s
                     QString reply(QJsonDocument(json).toJson());
                     textEdit->append("JSON (" + QString::number(reply.length()) + "): " + reply);
                 }
-                if (err.error != QJsonParseError::NoError)
-                {
+                if (err.error != QJsonParseError::NoError) {
                     textEdit->append("Json Error: " + err.errorString());
                 }
 
@@ -100,8 +99,8 @@ void ChromeListener::readBody(boost::asio::posix::stream_descriptor& sd, const s
 void ChromeListener::launch()
 {
     // Read the message header
-    char buf[4] = {};
-    async_read(m_sd, boost::asio::buffer(buf,sizeof(buf)), boost::asio::transfer_at_least(1), [&](boost::system::error_code ec, size_t br) {
+   std::array<char, 4> buf;
+    async_read(m_sd, boost::asio::buffer(buf), boost::asio::transfer_at_least(1), [&](boost::system::error_code ec, size_t br) {
         if (!ec && br >= 1) {
             uint len = 0;
             for (int i = 0; i < 4; i++) {
