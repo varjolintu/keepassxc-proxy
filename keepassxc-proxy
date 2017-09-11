@@ -10,8 +10,8 @@ import sys
 import json
 import threading
 import socket
-import Queue
-import Tkinter
+import queue
+import tkinter
 
 udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 udpSocket.settimeout(1)
@@ -49,18 +49,18 @@ def read_thread_func(queue):
       queue.put(text)
 
 
-class NativeMessagingWindow(Tkinter.Frame):
+class NativeMessagingWindow(tkinter.Frame):
   def __init__(self, queue):
     self.queue = queue
 
-    Tkinter.Frame.__init__(self)
+    tkinter.Frame.__init__(self)
     self.pack()
 
-    self.text = Tkinter.Text(self)
+    self.text = tkinter.Text(self)
     self.text.configure(font=("Courier New", 12))
     self.text.grid(row=0, column=0, padx=10, pady=10, columnspan=2)
-    self.text.config(state=Tkinter.DISABLED, height=20, width=80)
-    self.messageContent = Tkinter.StringVar()
+    self.text.config(state=tkinter.DISABLED, height=20, width=80)
+    self.messageContent = tkinter.StringVar()
     self.after(100, self.processMessages) 
 
   def processMessages(self):
@@ -95,15 +95,15 @@ class NativeMessagingWindow(Tkinter.Frame):
     self.after(10, self.processMessages)
 
   def log(self, message):
-    self.text.config(state=Tkinter.NORMAL)
-    self.text.insert(Tkinter.END, message + "\n")
-    self.text.config(state=Tkinter.DISABLED)
+    self.text.config(state=tkinter.NORMAL)
+    self.text.insert(tkinter.END, message + "\n")
+    self.text.config(state=tkinter.DISABLED)
 
 
 def Main():
-  queue = Queue.Queue()
+  pQueue = queue.Queue()
 
-  main_window = NativeMessagingWindow(queue)
+  main_window = NativeMessagingWindow(pQueue)
   main_window.master.title('keepassxc-proxy')
  
   messageThread = threading.Thread(target=read_thread_func, args=(queue,))
