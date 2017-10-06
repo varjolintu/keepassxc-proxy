@@ -27,8 +27,10 @@ private:
 	void sendReply(const std::string& reply);
 	void sendUDP(const std::string& reply, const std::size_t length);
 
+	void handleHeader(boost::asio::posix::stream_descriptor& sd, std::array<char, 4> buf, error_code ec, size_t br);
+
 private:
-	enum { max_length = 16*1024 };
+	enum { max_length = 4*1024 };
 	boost::asio::io_service	m_io_service;
 	std::atomic_bool		m_interrupted;
 	udp::socket				m_socket;
@@ -90,7 +92,7 @@ void NativeMessagingHost::readMessages()
 void NativeMessagingHost::readHeader(boost::asio::posix::stream_descriptor& sd)
 {
     std::array<char, 4> buf;
-    async_read(sd, buffer(buf, buf.size()), transfer_at_least(1), [&](error_code ec, size_t br) {
+    async_read(sd, buffer(buf, buf.size()), transfer_at_least(1), [this, &sd, &buf](error_code ec, size_t br) {
         if (!ec && br >= 1) {
             unsigned int len = 0;
             for (int i = 0; i < 4; i++) {
@@ -105,9 +107,10 @@ void NativeMessagingHost::readHeader(boost::asio::posix::stream_descriptor& sd)
 void NativeMessagingHost::readBody(boost::asio::posix::stream_descriptor& sd, const size_t len)
 {
     std::array<char, max_length> buf;
-    async_read(sd, buffer(buf, len), transfer_at_least(1), [&](error_code ec, size_t br) {
+    async_read(sd, buffer(buf, len), transfer_at_least(1), [this, &sd, &buf](error_code ec, size_t br) {
         if (!ec && br > 0) {
         	std::string body(buf.data(), br);
+			std::string debugString = "Datalength: " + std::to_string(br);
             sendUDP(body, body.length());
             readHeader(sd);
         }
@@ -130,7 +133,7 @@ int main()
     host.readMessages();
 #else
     posix::stream_descriptor in(svc, ::dup(STDIN_FILENO));
-    host.readHeader(in);
+	host.readHeader(in);
 #endif
     host.readUDP();
     svc.run();
