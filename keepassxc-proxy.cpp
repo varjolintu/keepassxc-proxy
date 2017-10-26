@@ -2,6 +2,7 @@
 #include <iostream>
 #ifndef _WIN32
 #include <boost/asio/posix/stream_descriptor.hpp>
+#include <boost/bind.hpp>
 #endif
 #ifdef _WIN32
 #include <fcntl.h>
@@ -19,8 +20,9 @@ public:
 	void readMessages();
 	void readUDP();
 #ifndef _WIN32
-	void readHeader(boost::asio::posix::stream_descriptor& sd);
-	void readBody(boost::asio::posix::stream_descriptor& sd, const size_t len);
+	void readHeader();
+	void readBody(const size_t len);
+	void handleHeader(const boost::system::error_code ec, const size_t br);
 #endif
 
 private:
@@ -28,15 +30,19 @@ private:
 	void sendUDP(const std::string& reply, const std::size_t length);
 
 private:
-	enum { max_length = 16*1024 };
-	boost::asio::io_service	m_io_service;
-	std::atomic_bool		m_interrupted;
-	udp::socket				m_socket;
-	udp::endpoint			m_senderEndpoint;
-	udp::endpoint 			m_endpoint;
+	enum { max_length = 4*1024 };
+	std::atomic_bool						m_interrupted;
+	udp::socket								m_socket;
+	udp::endpoint							m_senderEndpoint;
+	udp::endpoint 							m_endpoint;
+	std::array<char, 4>						m_headerBuf;
+	boost::asio::posix::stream_descriptor	m_sd;
 };
 
 NativeMessagingHost::NativeMessagingHost(boost::asio::io_service& io_service) :
+#ifndef Q_OS_WIN
+    m_sd(io_service, ::dup(STDIN_FILENO)),
+#endif
 	m_interrupted(false),
 	m_socket(io_service, udp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 0)),
 	m_endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 19700)
@@ -87,31 +93,34 @@ void NativeMessagingHost::readMessages()
 }
 
 #ifndef _WIN32
-void NativeMessagingHost::readHeader(boost::asio::posix::stream_descriptor& sd)
+void NativeMessagingHost::readHeader()
 {
-    std::array<char, 4> buf;
-    async_read(sd, buffer(buf, buf.size()), transfer_at_least(1), [&](error_code ec, size_t br) {
-        if (!ec && br >= 1) {
-            unsigned int len = 0;
-            for (int i = 0; i < 4; i++) {
-                unsigned int rc = buf.at(i);
-                len = len | (rc << i*8);
-            }
-            readBody(sd, len);
+	async_read(m_sd, buffer(m_headerBuf), boost::bind(&NativeMessagingHost::handleHeader, this,
+        boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+}
+
+void NativeMessagingHost::readBody(const size_t len)
+{
+    std::array<char, max_length> buf;
+    async_read(m_sd, buffer(buf, len), transfer_at_least(1), [this, &buf](error_code ec, size_t br) {
+        if (!ec && br > 0) {
+        	std::string body(buf.data(), br);
+            sendUDP(body, body.length());
+            readHeader();
         }
     });
 }
 
-void NativeMessagingHost::readBody(boost::asio::posix::stream_descriptor& sd, const size_t len)
+void NativeMessagingHost::handleHeader(const boost::system::error_code ec, const size_t br)
 {
-    std::array<char, max_length> buf;
-    async_read(sd, buffer(buf, len), transfer_at_least(1), [&](error_code ec, size_t br) {
-        if (!ec && br > 0) {
-        	std::string body(buf.data(), br);
-            sendUDP(body, body.length());
-            readHeader(sd);
+    if (!ec && br >= 1) {
+        uint len = 0;
+        for (int i = 0; i < 4; i++) {
+            uint rc = m_headerBuf.at(i);
+            len = len | (rc << i*8);
         }
-    });
+        readBody(len);
+    }
 }
 #endif
 
@@ -129,8 +138,7 @@ int main()
 #ifdef _WIN32
     host.readMessages();
 #else
-    posix::stream_descriptor in(svc, ::dup(STDIN_FILENO));
-    host.readHeader(in);
+	host.readHeader();
 #endif
     host.readUDP();
     svc.run();
