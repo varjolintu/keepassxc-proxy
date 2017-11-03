@@ -5,6 +5,18 @@ project(keepassxc-proxy)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
 
+macro(add_gcc_compiler_cxxflags FLAGS)
+  if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANGXX)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
+  endif()
+endmacro(add_gcc_compiler_cxxflags)
+
+add_gcc_compiler_cxxflags("-std=c++11")
+
+if(APPLE)
+  add_gcc_compiler_cxxflags("-stdlib=libc++")
+endif()
+
 find_package(Qt5Core)
 find_package(Qt5Network)
 

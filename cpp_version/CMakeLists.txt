@@ -14,5 +14,5 @@ set(BOOST_ALL_DYN_LINK           ON)
 message("Boost include dir = " "${Boost_INCLUDE_DIR}")
 message("Boost library dir = " "${Boost_LIBRARY_DIRS}")
 
-add_executable(keepassxc-proxy keepassxc-proxy.cpp)
+add_executable(keepassxc-proxy keepassxc-proxy-unix.cpp)
 target_link_libraries(keepassxc-proxy ${Boost_LIBRARIES})

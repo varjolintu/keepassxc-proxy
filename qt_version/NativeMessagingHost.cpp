@@ -1,35 +1,44 @@
 #include "NativeMessagingHost.h"
 #include <QCoreApplication>
 
-#ifndef Q_OS_WIN
-#include <unistd.h>
-#endif
+#ifndef Q_OS_LINUX
 #if defined Q_OS_MAC || defined Q_OS_UNIX
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/time.h>
+#include <unistd.h>
+#endif
 #endif
 #ifdef Q_OS_LINUX
 #include <sys/epoll.h>
 #endif
 
 
-NativeMessagingHost::NativeMessagingHost()
+NativeMessagingHost::NativeMessagingHost() :
+    m_running(false)
 {
+#ifndef Q_OS_WIN
     m_notifier.reset(new QSocketNotifier(fileno(stdin), QSocketNotifier::Read, this));
     connect(m_notifier.data(), SIGNAL(activated(int)), this, SLOT(newMessage()));
-
     pid_t pid = getpid();
     QString client = "/tmp/kpxc_client." + QString::number(pid);
     QFile::remove(client);
+#endif
     m_localSocket.reset(new QLocalSocket());
+#ifdef Q_OS_WIN
+    m_localSocket->connectToServer("kpxc_server");
+    m_running = true;
+    m_future = QtConcurrent::run(this, &NativeMessagingHost::readNativeMessages);
+#else
     m_localSocket->connectToServer("/tmp/kpxc_server");
+#endif
     connect(m_localSocket.data(), SIGNAL(readyRead()), this, SLOT(newLocalMessage()));
     connect(m_localSocket.data(), SIGNAL(disconnected()), this, SLOT(deleteSocket()));
 }
 
 void NativeMessagingHost::newMessage()
 {
+#ifndef Q_OS_LINUX
 #if defined Q_OS_MAC || defined Q_OS_UNIX
     struct kevent ev[1];
 	struct timespec ts = { 5, 0 };
@@ -52,8 +61,7 @@ void NativeMessagingHost::newMessage()
         ::close(fd);
         return;
     }
-#elif defined Q_OS_WIN
-    // Windows version with select() ?
+#endif
 #elif defined Q_OS_LINUX
     int fd = epoll_create(5);
     struct epoll_event event;
@@ -82,10 +90,32 @@ void NativeMessagingHost::newMessage()
     	QCoreApplication::quit();
     }
 
-#ifdef Q_OS_LINUX
-    close(fd);
+#ifndef Q_OS_WIN
+    ::close(fd);
 #endif
 }
+
+#ifdef Q_OS_WIN
+void NativeMessagingHost::readNativeMessages()
+{
+    quint32 length = 0;
+    while (m_running) {
+        length = 0;
+        std::cin.read(reinterpret_cast<char*>(&length), 4);
+        QByteArray arr;
+        for (quint32 i = 0; i < length; i++) {
+            arr.append(getchar());
+        }
+
+        if (arr.length() > 0 && m_localSocket) {
+            m_localSocket->write(arr.constData(), arr.length());
+            m_localSocket->flush();
+        }
+
+        QThread::msleep(1);
+    }
+}
+#endif
 
 void NativeMessagingHost::newLocalMessage()
 {
@@ -108,7 +138,7 @@ void NativeMessagingHost::sendReply(const QString& reply)
 
 void NativeMessagingHost::deleteSocket()
 {
-    m_notifier->setEnabled(false);   
+    m_notifier->setEnabled(false);
     m_localSocket->deleteLater();
     QCoreApplication::quit();
 }
