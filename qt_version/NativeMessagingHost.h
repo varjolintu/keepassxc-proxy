@@ -17,6 +17,7 @@ class NativeMessagingHost : public QObject
     Q_OBJECT
 public:
     NativeMessagingHost();
+    ~NativeMessagingHost();
 
 public slots:
     void newMessage();
@@ -29,7 +30,7 @@ private:
 
 private:
     QSharedPointer<QSocketNotifier>         m_notifier;
-    QSharedPointer<QLocalSocket>            m_localSocket;
+    QLocalSocket*                           m_localSocket;
     QFuture<void>                           m_future;
     std::atomic_bool                        m_running;
 };

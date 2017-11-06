@@ -1,7 +1,7 @@
 #include <QCoreApplication>
 #include "NativeMessagingHost.h"
 
-#ifdef Q_OS_WIN
+#ifndef Q_OS_WIN
 #include <initializer_list>
 #include <signal.h>
 #include <unistd.h>
@@ -38,7 +38,7 @@ void catchUnixSignals(std::initializer_list<int> quitSignals) {
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
-#ifdef Q_OS_WIN
+#ifndef Q_OS_WIN
     catchUnixSignals({SIGQUIT, SIGINT, SIGTERM, SIGHUP});
 #endif
     NativeMessagingHost host;
