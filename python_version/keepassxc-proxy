@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 # Copyright (c) 2012 The Chromium Authors. All rights reserved.
 # Copyright (c) 2017 Sami Vänttinen <sami.vanttinen@protonmail.com>
@@ -12,108 +12,137 @@ import threading
 import socket
 import Queue
 import Tkinter
+import os.path
+import time
 
-udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-udpSocket.settimeout(1)
-serverPort = 19700
+socket_name = 'kpxc_server'
+
+# For systemd - check if /tmp/kpxc_server exists - if not use systemd runtime dir
+if os.path.exists(os.path.join('/', 'tmp', socket_name)):
+    server_address = os.path.join('/', 'tmp', socket_name)
+else:
+    server_address = os.path.join(os.getenv('XDG_RUNTIME_DIR'), socket_name)
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(60)
+sock.connect(server_address)
 
 # On Windows, the default I/O mode is O_TEXT. Set this to O_BINARY
 # to avoid unwanted modifications of the input/output streams.
 if sys.platform == "win32":
-  import os, msvcrt
-  msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
-  msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
+    import os, msvcrt
 
+    msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
+    msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
 
 def send_message(message):
-  sys.stdout.write(struct.pack('I', len(message)))
-  sys.stdout.write(message)
-  sys.stdout.flush()
-
+    sys.stdout.write(struct.pack('I', len(message)))
+    sys.stdout.write(message)
+    sys.stdout.flush()
 
 
 def read_thread_func(queue):
-  message_number = 0
-  while 1:
-    text_length_bytes = sys.stdin.read(4)
+    message_number = 0
+    while 1:
+        text_length_bytes = sys.stdin.read(4)
 
-    if len(text_length_bytes) == 0:
-      if queue:
-        queue.put(None)
-      sys.exit(0)
+        if len(text_length_bytes) == 0:
+            if queue:
+                queue.put(None)
+            sys.exit(0)
 
-    text_length = struct.unpack('i', text_length_bytes)[0]
-    text = sys.stdin.read(text_length).decode('utf-8')
+        text_length = struct.unpack('i', text_length_bytes)[0]
+        text = sys.stdin.read(text_length).decode('utf-8')
 
-    if queue:
-      queue.put(text)
+        if queue:
+            queue.put(text)
 
+class NativeMessaging():
+    def __init__(self, queue):
+        self.queue = queue
 
-class NativeMessagingWindow(Tkinter.Frame):
-  def __init__(self, queue):
-    self.queue = queue
+    def processMessages(self):
+        while not self.queue.empty():
+            message = self.queue.get_nowait()
+            if message == None:
+                self.quit()
+                return
+            self.log("Received %s" % message)
 
-    Tkinter.Frame.__init__(self)
-    self.pack()
+            # Handle requests from keepassxc-browser.
+            messageJSON = json.loads(message)
+            if messageJSON['action']:
+                sock.send(message)
+                try:
+                    resp, server = sock.recvfrom(4096)
+                    rawResp = "Response: {}".format(resp)
+                    self.log(rawResp)
+                    try:
+                        send_message(resp)
+                    except IOError:
+                        self.log("Failed to send message.")
+                except socket.timeout:
+                    self.log("Receive timeout")
+                    msg = json.dumps(
+                        {"action": messageJSON['action'], "error": "Not connected with KeePassXC.", "errorCode": 5})
+                    send_message(msg)
 
-    self.text = Tkinter.Text(self)
-    self.text.configure(font=("Courier New", 12))
-    self.text.grid(row=0, column=0, padx=10, pady=10, columnspan=2)
-    self.text.config(state=Tkinter.DISABLED, height=20, width=80)
-    self.messageContent = Tkinter.StringVar()
-    self.after(100, self.processMessages) 
+        self.after(10, self.processMessages)
 
-  def processMessages(self):
-    while not self.queue.empty():
-      message = self.queue.get_nowait()
-      if message == None:
-        self.quit()
-        return
-      self.log("Received %s" % message)
+class NativeMessagingDaemon(NativeMessaging):
+    def __init__(self, queue, log_file):
+        self.queue = queue
+        self.log_file = log_file
 
-      # Handle requests from keepassxc-browser.
-      messageJSON = json.loads(message)
-      if messageJSON['action']:
-        if messageJSON['action'] == "change-public-keys" and messageJSON['proxyPort']:
-          self.log("Proxy port changed")
-          #serverPort = messageJSON['proxyPort']
+    def log(self, message):
+        self.log_file.write(message + "\n   ")
+        self.log_file.flush()
 
-        udpSocket.sendto(message, ('localhost', serverPort))
-        try:
-          resp, server = udpSocket.recvfrom(4096)
-          rawResp = "Response: {}".format(resp)
-          self.log("Response: {}".format(rawResp))
-          try:
-            send_message(resp)
-          except IOError:
-            self.log("Failed to send message.")
-        except socket.timeout:
-          self.log("Receive timeout")
-          msg = json.dumps({"action": messageJSON['action'], "error": "Not connected with KeePassXC.", "errorCode": 5})
-          send_message(msg)
+    def after(self, ms, func=None, *args):
+        time.sleep(ms*0.001)
 
-    self.after(10, self.processMessages)
+class NativeMessagingWindow(Tkinter.Frame, NativeMessaging):
+    def __init__(self, queue):
+        self.queue = queue
 
-  def log(self, message):
-    self.text.config(state=Tkinter.NORMAL)
-    self.text.insert(Tkinter.END, message + "\n")
-    self.text.config(state=Tkinter.DISABLED)
+        Tkinter.Frame.__init__(self)
+        self.pack()
 
+        self.text = Tkinter.Text(self)
+        self.text.configure(font=("Courier New", 12))
+        self.text.grid(row=0, column=0, padx=10, pady=10, columnspan=2)
+        self.text.config(state=Tkinter.DISABLED, height=20, width=80)
+        self.messageContent = Tkinter.StringVar()
+        self.after(100, self.processMessages)
+
+    def log(self, message):
+        self.text.config(state=Tkinter.NORMAL)
+        self.text.insert(Tkinter.END, message + "\n")
+        self.text.config(state=Tkinter.DISABLED)
 
 def Main():
-  queue = Queue.Queue()
+    args = sys.argv
 
-  main_window = NativeMessagingWindow(queue)
-  main_window.master.title('keepassxc-proxy')
- 
-  messageThread = threading.Thread(target=read_thread_func, args=(queue,))
-  messageThread.daemon = True
-  messageThread.start()
+    queue = Queue.Queue()
 
-  main_window.mainloop()
-  udpSocket.close()
-  sys.exit(0)
+    messageThread = threading.Thread(target=read_thread_func, args=(queue,))
+    messageThread.daemon = True
+    messageThread.start()
+
+    if len(args) == 2 and args[1] == "--debug":
+        main_window = NativeMessagingWindow(queue)
+        main_window.master.title('keepassxc-proxy')
+
+        main_window.mainloop()
+    else:
+        with(open(os.devnull, 'w')) as log_file:
+            native_messaging = NativeMessagingDaemon(queue, log_file)
+            while True:
+                native_messaging.processMessages()
+
+    sock.close()
+    sys.exit(0)
 
 
 if __name__ == '__main__':
-  Main()
+    Main()
