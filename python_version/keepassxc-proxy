@@ -14,17 +14,23 @@ import Queue
 import Tkinter
 import os.path
 import time
+import platform
 
-socket_name = 'kpxc_server'
+SOCKET_NAME = 'kpxc_server'
+BUFF_SIZE = 4096
 
 if sys.version_info<(2,6,0) and sys.version_info >=(3,0,0):
     raise EnvironmentError("You need python 2.7 to run this script.")
 
+# Check if macos user specific directory exists - issue 1811
+# https://github.com/keepassxreboot/keepassxc/pull/1811
+if platform.system() == "Darwin" and os.path.exists(os.path.join(os.getenv('TMPDIR'), SOCKET_NAME)):
+    server_address = os.path.join(os.getenv('TMPDIR'), SOCKET_NAME)
 # For systemd - check if /tmp/kpxc_server exists - if not use systemd runtime dir
-if os.path.exists(os.path.join('/', 'tmp', socket_name)):
-    server_address = os.path.join('/', 'tmp', socket_name)
 elif os.getenv('XDG_RUNTIME_DIR') is not None:
-    server_address = os.path.join(os.getenv('XDG_RUNTIME_DIR'), socket_name)
+    server_address = os.path.join(os.getenv('XDG_RUNTIME_DIR'), SOCKET_NAME)
+elif os.path.exists(os.path.join('/', 'tmp', SOCKET_NAME)):
+    server_address = os.path.join('/', 'tmp', SOCKET_NAME)
 else:
     raise OSError('Unknown path for keepassxc socket.')
 
@@ -79,7 +85,7 @@ class NativeMessaging():
             if messageJSON['action']:
                 sock.send(message)
                 try:
-                    resp, server = sock.recvfrom(4096)
+                    resp, server = sock.recvfrom(BUFF_SIZE)
                     rawResp = "Response: {}".format(resp)
                     self.log(rawResp)
                     try:
