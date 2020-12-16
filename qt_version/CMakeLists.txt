@@ -17,15 +17,14 @@ if(APPLE)
   add_gcc_compiler_cxxflags("-stdlib=libc++")
 endif()
 
-find_package(Qt5Core)
-find_package(Qt5Network)
+find_package(Qt5 COMPONENTS Core Network)
 
 set(proxy_SOURCES
        main.cpp
-       NativeMessagingHost.cpp
+       NativeMessagingProxy.cpp
     )
 
 #add_executable(${PROJECT_NAME} "main.cpp")
 add_executable(${PROJECT_NAME} ${proxy_SOURCES})
 
-target_link_libraries(${PROJECT_NAME} Qt5::Core Qt5::Network)
+target_link_libraries(${PROJECT_NAME} Qt::Core Qt::Network)
