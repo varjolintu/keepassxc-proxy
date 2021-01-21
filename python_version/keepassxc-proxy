@@ -19,7 +19,7 @@ import platform
 SOCKET_NAME = 'kpxc_server'
 BUFF_SIZE = 4096
 
-if sys.version_info<(2,6,0) and sys.version_info >=(3,0,0):
+if (not (2, 6, 0) <= sys.version_info < (3, 0, 0)):
     raise EnvironmentError("You need python 2.7 to run this script.")
 
 # Check if macos user specific directory exists - issue 1811
