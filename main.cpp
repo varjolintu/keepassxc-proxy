@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020 KeePassXC Team <team@keepassxc.org>
+ *  Copyright (C) 2022 KeePassXC Team <team@keepassxc.org>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,9 +21,7 @@
 #include <iostream>
 
 #ifndef Q_OS_WIN
-#include <initializer_list>
 #include <signal.h>
-#include <unistd.h>
 
 // (C) Gist: https://gist.github.com/azadkuh/a2ac6869661ebd3f8588
 void ignoreUnixSignals(std::initializer_list<int> ignoreSignals)
