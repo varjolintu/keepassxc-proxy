@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020 KeePassXC Team <team@keepassxc.org>
+ *  Copyright (C) 2022 KeePassXC Team <team@keepassxc.org>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -42,10 +42,19 @@ namespace BrowserShared
 #if defined(KEEPASSXC_DIST_SNAP)
         return QProcessEnvironment::systemEnvironment().value("SNAP_USER_COMMON") + serverName;
 #elif defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-        // Use XDG_RUNTIME_DIR instead of /tmp if it's available
+        // This returns XDG_RUNTIME_DIR or else a temporary subdirectory.
         QString path = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-        return path.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::TempLocation) + serverName
-                              : path + serverName;
+
+        // Put the socket in a dedicated directory.
+        // This directory will be easily mountable by sandbox containers.
+        QString subPath = path + "/app/org.keepassxc.KeePassXC/";
+        QDir().mkpath(subPath);
+
+        QString socketPath = subPath + serverName;
+        // Create a symlink at the legacy location for backwards compatibility.
+        QFile::link(socketPath, path + serverName);
+
+        return socketPath;
 #elif defined(Q_OS_WIN)
         // Windows uses named pipes
         return serverName + "_" + qgetenv("USERNAME");
@@ -72,8 +81,13 @@ NativeMessagingProxy::NativeMessagingProxy()
 void NativeMessagingProxy::setupStandardInput()
 {
 #ifdef Q_OS_WIN
+#ifdef Q_CC_MSVC
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#else
     setmode(fileno(stdin), _O_BINARY);
     setmode(fileno(stdout), _O_BINARY);
+#endif
 #endif
 
     QtConcurrent::run([this] {
