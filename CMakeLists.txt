@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1.0)
+cmake_minimum_required(VERSION 3.16.0)
 
 project(keepassxc-proxy)
 
@@ -17,14 +17,13 @@ if(APPLE)
   add_gcc_compiler_cxxflags("-stdlib=libc++")
 endif()
 
-find_package(Qt5 COMPONENTS Core Network)
+find_package(Qt6 COMPONENTS Core Network)
 
 set(proxy_SOURCES
        main.cpp
        NativeMessagingProxy.cpp
     )
 
-#add_executable(${PROJECT_NAME} "main.cpp")
 add_executable(${PROJECT_NAME} ${proxy_SOURCES})
 
 target_link_libraries(${PROJECT_NAME} Qt::Core Qt::Network)
