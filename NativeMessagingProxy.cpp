@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022 KeePassXC Team <team@keepassxc.org>
+ *  Copyright (C) 2026 KeePassXC Team <team@keepassxc.org>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,10 +31,33 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #endif
+#if defined(Q_OS_MACOS)
+#include <unistd.h>
+#endif
 
 namespace BrowserShared
 {
-    constexpr int NATIVEMSG_MAX_LENGTH = 1024 * 1024;
+    constexpr int SOCKET_BUFFER_SIZE = 1024 * 1024;
+
+    // Get user's temporary directory. Bypasses $TMPDIR on macOS.
+    QString getUserTemporaryDirectory()
+    {
+#if defined(Q_OS_MACOS)
+        // In macOS QStandardPaths::TempLocation can be overridden with $TMPDIR. Use the location provided by the OS.
+        // Otherwise the socket will be created to incorrect path, and connection with the browser extension breaks.
+        const auto len = confstr(_CS_DARWIN_USER_TEMP_DIR, nullptr, 0);
+        if (len > 0 && len <= 1024) {
+            char rawPath[1024];
+            confstr(_CS_DARWIN_USER_TEMP_DIR, rawPath, len);
+            auto temporaryDirectory = QString::fromUtf8(rawPath);
+            if (temporaryDirectory.endsWith("/")) {
+                temporaryDirectory.chop(1);
+            }
+            return temporaryDirectory;
+        }
+#endif
+        return QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    }
 
     QString localServerPath()
     {
@@ -47,19 +70,23 @@ namespace BrowserShared
 
         // Put the socket in a dedicated directory.
         // This directory will be easily mountable by sandbox containers.
-        QString subPath = path + "/app/org.keepassxc.KeePassXC/";
+        QString subPath = path + "/app/org.keepassxc.KeePassXC";
         QDir().mkpath(subPath);
 
         QString socketPath = subPath + serverName;
+#ifndef KEEPASSXC_DIST_FLATPAK
         // Create a symlink at the legacy location for backwards compatibility.
-        QFile::link(socketPath, path + serverName);
+        const auto origSocketPath = path + serverName;
+        QFile::remove(origSocketPath);
+        QFile::link(socketPath, origSocketPath);
+#endif
 
         return socketPath;
 #elif defined(Q_OS_WIN)
         // Windows uses named pipes
         return serverName + "_" + qgetenv("USERNAME");
 #else // Q_OS_MACOS and others
-        return QStandardPaths::writableLocation(QStandardPaths::TempLocation) + serverName;
+        return getUserTemporaryDirectory() + serverName;
 #endif
     }
 } // namespace BrowserShared
@@ -90,7 +117,7 @@ void NativeMessagingProxy::setupStandardInput()
 #endif
 #endif
 
-    QtConcurrent::run([this] {
+    auto res = QtConcurrent::run([this] {
         while (std::cin.good()) {
             if (std::cin.peek() != EOF) {
                 uint length = 0;
@@ -101,7 +128,7 @@ void NativeMessagingProxy::setupStandardInput()
                 QString msg;
                 msg.reserve(length);
                 for (uint i = 0; i < length; ++i) {
-                    msg.append(getchar());
+                    msg.append(QChar(getchar()));
                 }
 
                 if (msg.length() > 0) {
@@ -126,10 +153,10 @@ void NativeMessagingProxy::setupLocalSocket()
 {
     m_localSocket.reset(new QLocalSocket());
     m_localSocket->connectToServer(BrowserShared::localServerPath());
-    m_localSocket->setReadBufferSize(BrowserShared::NATIVEMSG_MAX_LENGTH);
+    m_localSocket->setReadBufferSize(BrowserShared::SOCKET_BUFFER_SIZE);
     int socketDesc = m_localSocket->socketDescriptor();
     if (socketDesc) {
-        int max = BrowserShared::NATIVEMSG_MAX_LENGTH;
+        int max = BrowserShared::SOCKET_BUFFER_SIZE;
         setsockopt(socketDesc, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<char*>(&max), sizeof(max));
     }
 
